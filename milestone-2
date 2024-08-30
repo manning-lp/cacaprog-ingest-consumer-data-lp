@@ -1,0 +1,83 @@
+# Step1: Set Up a Scala Project with sbt
+# Create a new directory for your project and navigate into it
+mkdir kafka-producer-scala
+cd kafka-producer-scala
+
+# Use sbt to create a new project
+sbt new scala/scala3.g8
+
+# update build.sbt file
+val scala3Version = "3.5.0"
+
+lazy val root = project
+  .in(file("."))
+  .settings(
+    name := "KafkaProducerScala",
+    version := "0.1.0-SNAPSHOT",
+    
+    scalaVersion := scala3Version,
+
+    // Existing test dependency
+    libraryDependencies += "org.scalameta" %% "munit" % "1.0.0" % Test,
+
+    // Use Kafka clients library, which is not dependent on Scala version
+    libraryDependencies += "org.apache.kafka" % "kafka-clients" % "3.7.1"
+  )
+
+# Refresh the sbt Project
+sbt update
+
+# Step2: Write a Kafka Producer
+# Create a Scala Object for Your Producer inside the src/main/scala directory, 
+touch src/main/scala/KafkaProducerApp.scala
+
+# Edit KafkaProducerApp.scala
+import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord, ProducerConfig}
+import java.util.Properties
+
+object KafkaProducerApp {
+  def main(args: Array[String]): Unit = {
+    val props = new Properties()
+
+    // Configure the Kafka producer
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092") // Replace with your Kafka server
+    props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringSerializer")
+    props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringSerializer")
+
+    // Create the Kafka producer
+    val producer = new KafkaProducer[String, String](props)
+
+    // Create a producer record with a dummy event
+    val record = new ProducerRecord[String, String]("test-topic", "key", "Hello, Kafka!")
+
+    // Send the record
+    producer.send(record)
+
+    // Close the producer
+    producer.close()
+
+    println("Message sent to Kafka")
+  }
+}
+
+# Step 3: Test Your Kafka Producer
+# Start ZooKeeper
+bin/zookeeper-server-start.sh config/zookeeper.properties
+
+# Start Kafka
+bin/kafka-server-start.sh config/server.properties
+
+# Create a Kafka Topic
+bin/kafka-topics.sh --create --topic test-topic --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
+
+# Run Scala Kafka Producer
+sbt run
+# You should see the message "Message sent to Kafka" in the console.
+
+# Verify the message
+bin/kafka-console-consumer.sh --topic test-topic --from-beginning --bootstrap-server localhost:9092
+# You should see "Hello, Kafka!" printed in the terminal.
+
+
+
+
