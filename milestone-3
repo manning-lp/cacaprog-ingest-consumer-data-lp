@@ -1,0 +1,89 @@
+# Workflow
+
+# 1. Download the data 
+File "data\LCL-June2015v2_0.csv"
+
+# 2. Read the data file and parse the records
+a. Use sbt to create a new project
+sbt new scala/scala3.g8
+
+b. Update build.sbt file with libraries and scala version
+then I updated the sbt
+sbt update
+
+c. write a kafka producer
+File: \kafka-producer-scala\kafkaproducerscala\src\main\scala\IngestConsumerData.scala
+
+# 3. Sort the data by timestamp (DateTime) and by household ID (LCLid). 
+Make sure to parse the DateTime in the correct format.
+```
+def parseDate(dateStr: String): LocalDateTime = {
+  val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSS")
+  LocalDateTime.parse(dateStr, formatter)
+}
+
+def parseEnergyUsage(value: String): Double = {
+  if (value == "Null") 0.0 else value.toDouble
+}
+
+def readCSV(filePath: String): Seq[EnergyUsage] = {
+  val source = Source.fromFile(filePath)
+  val records = source.getLines().drop(1).map { line =>
+    val cols = line.split(",").map(_.trim)
+    EnergyUsage(
+      cols(0), // LCLid
+      cols(1), // stdorToU
+      parseDate(cols(2)), // DateTime
+      parseEnergyUsage(cols(3)) // KWH/hh (per half hour)
+    )
+  }.toSeq
+  source.close()
+  records
+}
+```
+
+def sortData(data: Seq[EnergyUsage]): Seq[EnergyUsage] = {
+  data.sortBy(record => (record.LCLid, record.timestamp))
+}
+
+
+# 4. Insert delayed records. A record is delayed when it has a timestamp earlier than the timestamp of preceding records, i.e., it arrived late. In the previous step we sorted the dataset by time, so it is easy to insert a record with a timestamp earlier than the previous one. Delayed records will mimic the network delays and intermittent failures of the real world.
+```
+def insertDelayedRecords(data: Seq[EnergyUsage], numDelayed: Int): Seq[EnergyUsage] = {
+  val random = new Random()
+  val delayedRecords = random.shuffle(data).take(numDelayed)
+  delayedRecords.foldLeft(data) { (updatedData, record) =>
+    val insertIndex = random.nextInt(updatedData.length)
+    updatedData.patch(insertIndex, Seq(record), 0)
+  }
+}
+
+def main(args: Array[String]): Unit = {
+  val filePath = "/home/stream-project/data/LCL-June2015v2_0.csv"
+  val data = readCSV(filePath)
+  val dataWithDelays = insertDelayedRecords(sortedData, numDelayed = 5)
+
+```
+
+# 5. Drop a record. This will mimic lost records in the real world.
+```
+def dropRecords(data: Seq[EnergyUsage], numDrop: Int): Seq[EnergyUsage] = {
+  val random = new Random()
+  val indicesToDrop = random.shuffle(data.indices).take(numDrop).toSet
+  data.zipWithIndex.filterNot { case (_, index) => indicesToDrop.contains(index) }.map(_._1)
+}
+```
+# 6. Duplicate some records.
+```
+def duplicateRecords(data: Seq[EnergyUsage], numDuplicates: Int): Seq[EnergyUsage] = {
+  val random = new Random()
+  val recordsToDuplicate = random.shuffle(data).take(numDuplicates)
+  data ++ recordsToDuplicate
+}
+```
+
+# 7. Write a test case to test your logic.
+Test file: kafka-producer-scala\kafkaproducerscala\src\test\scala\EnergyUsageSpec.scala
+Running test
+sbt test
+
